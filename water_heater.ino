@@ -142,7 +142,7 @@ bool update_sensors(void *) {
   update_temp();
   update_amps();
   update_switch_state();  
-    return true; 
+  return true; 
 }
 
 void update_amps()
