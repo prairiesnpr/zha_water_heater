@@ -110,15 +110,24 @@ void setup() {
 
 bool read_temp(DeviceAddress thermometer, uint8_t *t_value)
 {
-  float TempC = sensors.getTempC(thermometer);
-  if (TempC == -127.0)
+  bool success = sensors.requestTemperaturesByAddress(thermometer);
+
+  if (!success)
   {
-    Serial.println(F("Failed to Read T."));
+    Serial.println(F("T addr not found"));
+  }
+
+  delay(10); //No idea why this is needed
+
+  float TempC = sensors.getTempC(thermometer);
+  if (TempC == DEVICE_DISCONNECTED_C)
+  {
+    Serial.println(F("T Disconnect"));
     return false;
   } 
 
   Serial.print(F("Temp: "));
-  Serial.print(TempC);
+  Serial.print(String(TempC, 2));
   Serial.println(F("°C"));
 
   uint16_t cor_t = (uint16_t)(TempC * 100.0);
@@ -171,12 +180,6 @@ void update_switch_state()
 
 void update_temp()
 {
-  // Request Temp sensors to update
-  sensors.requestTemperatures();
-
-  //Delay helps, otherwise we miss the In Temp
-  delay(10);
-  
   // In Temp
   bool r_success = read_temp(inputThermometer, t_value);
 
@@ -188,7 +191,8 @@ void update_temp()
     attr->value = t_value;
     sendAttributeRpt(cluster.id, attr, end_point.id, 1);
   }
-
+  
+  
   // Out Temp
   r_success = read_temp(outputThermometer, t_value);
 
