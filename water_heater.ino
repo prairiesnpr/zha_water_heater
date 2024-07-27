@@ -143,7 +143,7 @@ void update_switch_state()
   // Update our current switch state
   Endpoint end_point = zha.GetEndpoint(SW_AMP_ENDPOINT);
   Cluster cluster = end_point.GetCluster(ON_OFF_CLUSTER_ID);
-  attribute *attr = cluster.GetAttr(0x0000);
+  attribute *attr = cluster.GetAttr(CURRENT_STATE);
   Serial.print(F("Cur St "));
   Serial.println(attr->GetIntValue());
   zha.sendAttributeRpt(cluster.id, attr, end_point.id, 1);
@@ -159,7 +159,7 @@ void update_temp()
   {
     Endpoint in_end_point = zha.GetEndpoint(IN_TEMP_ENDPOINT);
     Cluster in_cluster = in_end_point.GetCluster(TEMP_CLUSTER_ID);
-    attribute *in_attr = in_cluster.GetAttr(0x0000);
+    attribute *in_attr = in_cluster.GetAttr(CURRENT_STATE);
     in_attr->SetValue(res_temp);
     zha.sendAttributeRpt(in_cluster.id, in_attr, in_end_point.id, 1);
   }
@@ -171,7 +171,7 @@ void update_temp()
   {
     Endpoint out_end_point = zha.GetEndpoint(OUT_TEMP_ENDPOINT);
     Cluster out_cluster = out_end_point.GetCluster(TEMP_CLUSTER_ID);
-    attribute *out_attr = out_cluster.GetAttr(0x0000);
+    attribute *out_attr = out_cluster.GetAttr(CURRENT_STATE);
     out_attr->SetValue(res_temp);
     zha.sendAttributeRpt(out_cluster.id, out_attr, out_end_point.id, 1);
   }
@@ -215,7 +215,7 @@ void loop()
     uint8_t val = digitalRead(SSR_PIN);
     Endpoint end_point = zha.GetEndpoint(SW_AMP_ENDPOINT);
     Cluster cluster = end_point.GetCluster(ON_OFF_CLUSTER_ID);
-    attribute *attr = cluster.GetAttr(0x0000);
+    attribute *attr = cluster.GetAttr(CURRENT_STATE);
 
     if (val != attr->GetIntValue())
     {
@@ -290,12 +290,12 @@ void zdoReceive(ZBExplicitRxResponse &erx, uintptr_t)
           if (cmd_id == 0x00)
           {
             Serial.println(F("Cmd Off"));
-            SetAttr(ep, erx.getClusterId(), 0x0000, 0x00, erx.getFrameData()[erx.getDataOffset() + 1]);
+            SetAttr(ep, erx.getClusterId(), CURRENT_STATE, cmd_id, erx.getFrameData()[erx.getDataOffset() + 1]);
           }
           else if (cmd_id == 0x01)
           {
             Serial.println(F("Cmd On"));
-            SetAttr(ep, erx.getClusterId(), 0x0000, 0x01, erx.getFrameData()[erx.getDataOffset() + 1]);
+            SetAttr(ep, erx.getClusterId(), CURRENT_STATE, cmd_id, erx.getFrameData()[erx.getDataOffset() + 1]);
           }
           else
           {
