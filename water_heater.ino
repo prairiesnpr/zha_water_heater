@@ -22,6 +22,7 @@
 #define START_LOOPS 100
 
 uint8_t start_fails = 0;
+uint8_t init_status_sent = 0;
 
 void (*resetFunc)(void) = 0;
 
@@ -64,10 +65,10 @@ void setup()
   // emon1.current(AMP_PIN, 111.1);    // Current: input pin, calibration.
   emon1.current(AMP_PIN, 0);
 
-  zha.Start(nss, zdoReceive, NUM_ENDPOINTS, ENDPOINTS);
+  zha.Start(nss, zhaClstrCmd, zhaWriteAttr, NUM_ENDPOINTS, ENDPOINTS);
 
   // Set up callbacks
-  zha.registerCallbacks(atCmdResp, zbTxStatusResp, otherResp);
+  zha.registerCallbacks(atCmdResp, zbTxStatusResp, otherResp, zdoReceive);
 
   Serial.println(F("CB Conf"));
 
@@ -111,7 +112,6 @@ bool update_sensors(void *)
 {
   update_temp();
   update_amps();
-  update_switch_state();
   return true;
 }
 
@@ -144,6 +144,8 @@ void update_switch_state()
   Endpoint end_point = zha.GetEndpoint(SW_AMP_ENDPOINT);
   Cluster cluster = end_point.GetCluster(ON_OFF_CLUSTER_ID);
   attribute *attr = cluster.GetAttr(CURRENT_STATE);
+  uint8_t val = digitalRead(SSR_PIN);
+  attr->SetValue(val);
   Serial.print(F("Cur St "));
   Serial.println(attr->GetIntValue());
   zha.sendAttributeRpt(cluster.id, attr, end_point.id, 1);
@@ -200,7 +202,7 @@ void SetAttr(uint8_t ep_id, uint16_t cluster_id, uint16_t attr_id, uint8_t value
       Serial.println(end_point.id);
       digitalWrite(SSR_PIN, HIGH);
     }
-    zha.sendAttributeWriteRsp(cluster_id, attr, ep_id, 1, value, zha.cmd_seq_id);
+    zha.sendAttributeCmdRsp(cluster_id, attr, ep_id, 1, value, zha.cmd_seq_id);
   }
 }
 
@@ -210,23 +212,20 @@ void loop()
 
   if (zha.dev_status == READY)
   {
-    // Not required normally, but if we turned the ssr on after a power failure
-    // Need to ensure we let HA know.
-    uint8_t val = digitalRead(SSR_PIN);
-    Endpoint end_point = zha.GetEndpoint(SW_AMP_ENDPOINT);
-    Cluster cluster = end_point.GetCluster(ON_OFF_CLUSTER_ID);
-    attribute *attr = cluster.GetAttr(CURRENT_STATE);
-
-    if (val != attr->GetIntValue())
+    if (init_status_sent)
     {
-      Serial.print(F("EP"));
-      Serial.print(end_point.id);
-      Serial.print(F(": "));
-      Serial.print(attr->GetIntValue());
-      Serial.print(F(" Now "));
-      attr->SetValue(val);
-      Serial.println(attr->GetIntValue());
-      zha.sendAttributeRpt(cluster.id, attr, end_point.id, 1);
+      if ((loop_time - last_msg_time) > 1000)
+      {
+        last_msg_time = millis();
+      }
+      // Nothing to do here, the timers take care of the updates
+    }
+
+    if (!init_status_sent)
+    {
+      Serial.println(F("Snd Init States"));
+      init_status_sent = 1;
+      update_switch_state();
     }
   }
   else if ((loop_time - last_msg_time) > 1000)
@@ -237,144 +236,74 @@ void loop()
     Serial.println(START_LOOPS);
 
     last_msg_time = millis();
+    if (start_fails > 15)
+    {
+      // Sometimes we don't get a response from dev ann, try a transmit and see if we are good
+      update_switch_state();
+    }
     if (start_fails > START_LOOPS)
     {
       resetFunc();
     }
     start_fails++;
   }
-
   sensor_timer.tick();
   state_timer.tick();
   wdt_reset();
   loop_time = millis();
 }
 
-void zdoReceive(ZBExplicitRxResponse &erx, uintptr_t)
+void zhaWriteAttr(ZBExplicitRxResponse &erx)
 {
-  // Create a reply packet containing the same data
-  // This directly reuses the rx data array, which is ok since the tx
-  // packet is sent before any new response is received
 
-  if (erx.getRemoteAddress16() == 0)
+  Serial.println(F("Write Cmd"));
+  // No writable attributes
+}
+
+void zhaClstrCmd(ZBExplicitRxResponse &erx)
+{
+  Serial.println(F("Clstr Cmd"));
+  if (erx.getDstEndpoint() == SW_AMP_ENDPOINT)
   {
-    zha.cmd_seq_id = erx.getFrameData()[erx.getDataOffset() + 1];
-    Serial.print(F("Cmd Seq: "));
-    Serial.println(zha.cmd_seq_id);
-
-    uint8_t ep = erx.getDstEndpoint();
-    uint16_t clId = erx.getClusterId();
-    uint8_t cmd_id = erx.getFrameData()[erx.getDataOffset() + 2];
-    uint8_t frame_type = erx.getFrameData()[erx.getDataOffset()] & 0x03;
-
-    if (frame_type)
+    Serial.println(F("Door Ep"));
+    if (erx.getClusterId() == ON_OFF_CLUSTER_ID)
     {
-      Serial.println(F("Clstr Cmd"));
-      if (ep == SW_AMP_ENDPOINT)
+      Serial.println(F("ON/OFF Cl"));
+      for (uint8_t i = erx.getDataOffset(); i < (erx.getDataLength() + erx.getDataOffset() + 3); i++)
       {
-        Serial.println(F("Door Ep"));
-        if (clId == ON_OFF_CLUSTER_ID)
-        {
-          Serial.println(F("ON/OFF Cl"));
-          uint8_t len_data = erx.getDataLength() - 3;
-          uint16_t attr_rqst[len_data / 2];
-          uint8_t new_state = erx.getFrameData()[erx.getDataOffset() + 2];
-
-          for (uint8_t i = erx.getDataOffset(); i < (erx.getDataLength() + erx.getDataOffset() + 3); i++)
-          {
-            Serial.print(erx.getFrameData()[i], HEX);
-            Serial.print(F(" "));
-          }
-          Serial.println();
-
-          if (cmd_id == 0x00)
-          {
-            Serial.println(F("Cmd Off"));
-            SetAttr(ep, erx.getClusterId(), CURRENT_STATE, cmd_id, erx.getFrameData()[erx.getDataOffset() + 1]);
-          }
-          else if (cmd_id == 0x01)
-          {
-            Serial.println(F("Cmd On"));
-            SetAttr(ep, erx.getClusterId(), CURRENT_STATE, cmd_id, erx.getFrameData()[erx.getDataOffset() + 1]);
-          }
-          else
-          {
-            Serial.print(F("Cmd Id: "));
-            Serial.println(cmd_id, HEX);
-          }
-        }
+        Serial.print(erx.getFrameData()[i], HEX);
+        Serial.print(F(" "));
       }
-      else if (ep == IN_TEMP_ENDPOINT || ep == OUT_TEMP_ENDPOINT)
+      Serial.println();
+
+      if (erx.getFrameData()[erx.getDataOffset() + 2] == 0x00)
       {
-        Serial.println(F("Temp Ep"));
+        Serial.println(F("Cmd Off"));
+        SetAttr(erx.getDstEndpoint(), erx.getClusterId(), CURRENT_STATE, erx.getFrameData()[erx.getDataOffset() + 2], erx.getFrameData()[erx.getDataOffset() + 1]);
+      }
+      else if (erx.getFrameData()[erx.getDataOffset() + 2] == 0x01)
+      {
+        Serial.println(F("Cmd On"));
+        SetAttr(erx.getDstEndpoint(), erx.getClusterId(), CURRENT_STATE, erx.getFrameData()[erx.getDataOffset() + 2], erx.getFrameData()[erx.getDataOffset() + 1]);
       }
       else
       {
-        Serial.println(F("Inv Ep"));
+        Serial.print(F("Cmd Id: "));
+        Serial.println(erx.getFrameData()[erx.getDataOffset() + 2], HEX);
       }
     }
-    else
-    {
-      Serial.println(F("Glbl Cmd"));
+  }
+  else if (erx.getDstEndpoint() == IN_TEMP_ENDPOINT || erx.getDstEndpoint() == OUT_TEMP_ENDPOINT)
+  {
+    Serial.println(F("Temp Ep"));
+  }
+  else
+  {
+    Serial.println(F("Inv Ep"));
+  }
 
-      Endpoint end_point = zha.GetEndpoint(ep);
-      Cluster cluster = end_point.GetCluster(clId);
-      if (cmd_id == 0x00)
-      {
-        // Read attributes
-        Serial.println(F("Read Attr"));
-        uint8_t len_data = erx.getDataLength() - 3;
-        uint16_t attr_rqst[len_data / 2];
-        for (uint8_t i = erx.getDataOffset() + 3; i < (len_data + erx.getDataOffset() + 3); i += 2)
-        {
-          attr_rqst[i / 2] = (erx.getFrameData()[i + 1] << 8) |
-                             (erx.getFrameData()[i] & 0xff);
-          attribute *attr = end_point.GetCluster(erx.getClusterId()).GetAttr(attr_rqst[i / 2]);
-          Serial.print(F("Clstr Rd Att: "));
-          Serial.println(attr_rqst[i / 2]);
-          zha.sendAttributeRsp(erx.getClusterId(), attr, ep, 0x01, 0x01, zha.cmd_seq_id);
-          zha.cmd_seq_id++;
-        }
-      }
-      else
-      {
-        Serial.println(F("Not Read Attr"));
-      }
-    }
-    uint8_t frame_direction = (erx.getFrameData()[erx.getDataOffset()] >> 3) & 1;
-    if (frame_direction)
-    {
-      Serial.println(F("Srv to Client"));
-    }
-    else
-    {
-      Serial.println(F("Client to Srv"));
-    }
-    Serial.print(F("ZDO: EP: "));
-    Serial.print(ep);
-    Serial.print(F(", Clstr: "));
-    Serial.print(clId, HEX);
-    Serial.print(F(" Cmd Id: "));
-    Serial.print(cmd_id, HEX);
-    Serial.print(F(" FrmCtl: "));
-    Serial.println(erx.getFrameData()[erx.getDataOffset()], BIN);
-
-    if (erx.getClusterId() == ACTIVE_EP_RQST)
-    {
-      // Have to match sequence number in response
-      cmd_result = NULL;
-      zha.last_seq_id = erx.getFrameData()[erx.getDataOffset()];
-      zha.sendActiveEpResp(zha.last_seq_id);
-    }
-    if (erx.getClusterId() == SIMPLE_DESC_RQST)
-    {
-      Serial.print("Simple Desc Rqst, Ep: ");
-      // Have to match sequence number in response
-      // Payload is EndPoint
-      // Can this just be regular ep?
-      uint8_t ep_msg = erx.getFrameData()[erx.getDataOffset() + 3];
-      Serial.println(ep_msg, HEX);
-      zha.sendSimpleDescRpt(ep_msg, erx.getFrameData()[erx.getDataOffset()]);
-    }
+  if (erx.getClusterId() == BASIC_CLUSTER_ID)
+  {
+    Serial.println(F("Basic Clstr"));
   }
 }
