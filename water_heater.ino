@@ -131,7 +131,8 @@ void update_amps()
 
   Endpoint end_point = zha.GetEndpoint(SW_AMP_ENDPOINT);
   Cluster cluster = end_point.GetCluster(ELECTRICAL_MEASUREMENT);
-  attribute *attr = cluster.GetAttr(RMS_CURRENT);
+  attribute *attr; 
+  uint8_t attr_exists = cluster.GetAttr(&attr, RMS_CURRENT);
   uint16_t cor_t = (uint16_t)(Irms * 240.0);
 
   attr->SetValue(cor_t);
@@ -143,7 +144,8 @@ void update_switch_state()
   // Update our current switch state
   Endpoint end_point = zha.GetEndpoint(SW_AMP_ENDPOINT);
   Cluster cluster = end_point.GetCluster(ON_OFF_CLUSTER_ID);
-  attribute *attr = cluster.GetAttr(CURRENT_STATE);
+  attribute *attr;
+  uint8_t attr_exists = cluster.GetAttr(&attr, CURRENT_STATE);
   uint8_t val = digitalRead(SSR_PIN);
   attr->SetValue(val);
   Serial.print(F("Cur St "));
@@ -161,7 +163,8 @@ void update_temp()
   {
     Endpoint in_end_point = zha.GetEndpoint(IN_TEMP_ENDPOINT);
     Cluster in_cluster = in_end_point.GetCluster(TEMP_CLUSTER_ID);
-    attribute *in_attr = in_cluster.GetAttr(CURRENT_STATE);
+    attribute *in_attr;
+    uint8_t attr_exists = in_cluster.GetAttr(&in_attr, CURRENT_STATE);
     in_attr->SetValue(res_temp);
     zha.sendAttributeRpt(in_cluster.id, in_attr, in_end_point.id, 1);
   }
@@ -173,7 +176,8 @@ void update_temp()
   {
     Endpoint out_end_point = zha.GetEndpoint(OUT_TEMP_ENDPOINT);
     Cluster out_cluster = out_end_point.GetCluster(TEMP_CLUSTER_ID);
-    attribute *out_attr = out_cluster.GetAttr(CURRENT_STATE);
+    attribute *out_attr;
+    uint8_t attr_exists = out_cluster.GetAttr(&out_attr, CURRENT_STATE);
     out_attr->SetValue(res_temp);
     zha.sendAttributeRpt(out_cluster.id, out_attr, out_end_point.id, 1);
   }
@@ -183,7 +187,8 @@ void SetAttr(uint8_t ep_id, uint16_t cluster_id, uint16_t attr_id, uint8_t value
 {
   Endpoint end_point = zha.GetEndpoint(ep_id);
   Cluster cluster = end_point.GetCluster(cluster_id);
-  attribute *attr = cluster.GetAttr(attr_id);
+  attribute *attr;
+  uint8_t attr_exists = cluster.GetAttr(&attr, attr_id);
 
   Serial.print("Clstr: ");
   Serial.println(cluster_id, HEX);
