@@ -147,7 +147,7 @@ void update_switch_state()
   uint8_t val = digitalRead(SSR_PIN);
   attr->SetValue(val);
   Serial.print(F("Cur St "));
-  Serial.println(attr->GetIntValue());
+  Serial.println(attr->GetIntValue(0x00));
   zha.sendAttributeRpt(cluster.id, attr, end_point.id, 1);
 }
 
