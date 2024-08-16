@@ -50,8 +50,8 @@ attribute metering_attr[] = {
     {AC_FREQUENCY_MAX, const_cast<uint8_t *>(two_zero_byte), sizeof(two_zero_byte), ZCL_UINT16_T},
 };
 
-attribute in_temp_attr[] = {{CURRENT_STATE, const_cast<uint8_t *>(two_zero_byte), sizeof(two_zero_byte), ZCL_UINT16_T}};
-attribute out_temp_attr[] = {{CURRENT_STATE, const_cast<uint8_t *>(two_zero_byte), sizeof(two_zero_byte), ZCL_UINT16_T}};
+attribute in_temp_attr[] = {{CURRENT_STATE, const_cast<uint8_t *>(two_zero_byte), sizeof(two_zero_byte), ZCL_INT16_T}};
+attribute out_temp_attr[] = {{CURRENT_STATE, const_cast<uint8_t *>(two_zero_byte), sizeof(two_zero_byte), ZCL_INT16_T}};
 
 // dev_basic_attr
 
