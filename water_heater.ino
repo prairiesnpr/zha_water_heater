@@ -9,6 +9,7 @@
 
 #define WATER_TEMP_BUS 7
 #define SSR_PIN 5
+
 #define AMP_PIN 16
 
 #define SW_AMP_ENDPOINT 1
@@ -132,7 +133,7 @@ void update_amps()
   Endpoint end_point = zha.GetEndpoint(SW_AMP_ENDPOINT);
   Cluster cluster = end_point.GetCluster(ELECTRICAL_MEASUREMENT);
   attribute *attr; 
-  uint8_t attr_exists = cluster.GetAttr(&attr, RMS_CURRENT);
+  uint8_t attr_exists = cluster.GetAttr(&attr, RMS_CURRENT_ATTR);
   uint16_t cor_t = (uint16_t)(Irms * 240.0);
 
   attr->SetValue(cor_t);
